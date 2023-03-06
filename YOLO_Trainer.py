@@ -6,6 +6,7 @@ import sys
 BEST_MODEL = "Current_Best_Model.pt"
 DEFAULT_MODEL = "yolov8n.pt"
 
+#
 def trainModel():
     model = YOLO(DEFAULT_MODEL)
     model.train(data="MahjongTiles.yaml", epochs=3, cache=True)
