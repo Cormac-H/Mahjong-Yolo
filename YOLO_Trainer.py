@@ -14,14 +14,17 @@ def trainModel():
 
 def predictOnBestModel():
     model = YOLO(BEST_MODEL)
-    results = model.predict(source="Test-Screenshots", save=True)
-    model.predict(source="Test-Videos", save=True)
-    print(results.boxes)
-    print(results.probabilities)
+    results = model.predict(source="Test-Screenshots", save=True, stream=True)
+    # model.predict(source="Test-Videos", save=True)
+    for result in results:
+        print(result.boxes.xywh)   # box with xywh format, (N, 4)
+        print(result.boxes.conf)
+        # classification
+        print(result.probs)
     
 def main():
-    # torch.cuda.is_available = lambda : False
-    # predictOnBestModel()
+    torch.cuda.is_available = lambda : False
+    predictOnBestModel()
     return
 
 
