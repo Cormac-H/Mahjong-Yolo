@@ -1,1 +1,8 @@
 ultralytics
+torch
+ipython
+cv2
+numpy
+matplotlib
+Pillow
+argparse
