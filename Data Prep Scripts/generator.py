@@ -97,16 +97,71 @@ def generate_images(image_count, image_rotation):
                 top_left_width = int((centre_width*1520)-(width/2))
                 background[top_left_height:top_left_height+height, top_left_width:top_left_width+width] = card
                 
-                cv2.imwrite("./Data/images/train/image_" + str(x) + "_" + y + str(z) + "_rotated_" + str(image_rotation) + ".jpg", cv2.cvtColor(background, cv2.COLOR_RGB2BGR))
-                files = open("./Data/labels/train/image_" + str(x) + "_" + y + str(z) + "_rotated_" + str(image_rotation) + ".txt", 'w')
+                cv2.imwrite("./test-generator/images/image_" + str(x) + "_" + y + str(z) + "_rotated_" + str(image_rotation) + ".jpg", cv2.cvtColor(background, cv2.COLOR_RGB2BGR))
+                files = open("./test-generator/labels/image_" + str(x) + "_" + y + str(z) + "_rotated_" + str(image_rotation) + ".txt", 'w')
                 yolo = str(label_number(y+str(z)))+" "+str(centre_width)+" "+str(centre_height)+" "+str(width/1520)+" "+str(height/720)
                 files.write(yolo)
                 
                 print("Generated image_" + str(x) + "_" + y + str(z) + "_rotated_" + str(image_rotation) + ".jpg")
+                
+                
+def get_random_tile(tile_counts):
+    suits = ["B", "C", "D"]
+    suit = random.choice(suits)
+    tile_value = random.randint(1, 9)
+    while(tile_counts[label_number(suit + str(tile_value))] >= 4):
+        suit = random.choice(suits)
+        tile_value = random.randint(1, 9)
+        
+    tile_counts[label_number(suit + str(tile_value))] += 1
+    return suit, tile_value
+
+def generate_player_hand(background, tile_counts, label):
+    STARTING_X = 290
+    STARTING_Y = 640
+    
+    for i in range(13):
+        suit, tile_value = get_random_tile(tile_counts)
+        card = cv2.imread("./MahjongTiles/" + suit + str(tile_value) + ".jpg")
+        card = cv2.cvtColor(card, cv2.COLOR_BGR2RGB)
+        
+        height = card.shape[0]
+        width = card.shape[1]
+        
+        card = cv2.resize(card,(int(width*1.67),int(height*1.67)))
+        height = card.shape[0]
+        width = card.shape[1]
+        
+        centre_height = STARTING_Y / 720
+        centre_width = (STARTING_X + (i * width)) / 1520
+        
+        top_left_height = int((centre_height*720)-(height/2))
+        top_left_width = int((centre_width*1520)-(width/2))
+        background[top_left_height:top_left_height+height, top_left_width:top_left_width+width] = card
+
+        yolo_bbox = str(label_number(suit+str(tile_value)))+" "+str(centre_width)+" "+str(centre_height)+" "+str(width/1520)+" "+str(height/720) + "\n"
+        label.write(yolo_bbox)
+        
+    return background
+
+def experimental_generate_images(image_count):
+    tile_counts = np.zeros(27)
+    for x in range(image_count):
+        background = cv2.imread("./MahjongTiles/background.jpg")
+        background = cv2.cvtColor(background, cv2.COLOR_BGR2RGB)
+        
+        label = open("./image_" + str(x) + ".txt", 'w')
+        
+        background = generate_player_hand(background, tile_counts, label)
+        
+        cv2.imwrite("./image_" + str(x) + ".jpg" , cv2.cvtColor(background, cv2.COLOR_RGB2BGR))
+        
+        print("Generated image_" + str(x) + ".jpg")
 
 if __name__ == "__main__":
     print("GENERATING DATASET")
-    generate_images(20, 0)
-    generate_images(20, 90)
-    generate_images(20, 180)
-    generate_images(20, 270)
+    # generate_images(100, 0)
+    # generate_images(100, 90)
+    # generate_images(100, 180)
+    # generate_images(100, 270)
+    experimental_generate_images(1)
