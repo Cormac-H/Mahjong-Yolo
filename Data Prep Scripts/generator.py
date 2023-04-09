@@ -7,36 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from PIL import Image
 
-def get_random_height(height):
-    vaild = False
-    while(vaild == False):
-        random_height = random.random()
-        if (720-height)/720 < random_height:
-            vaild = False
-        elif (height/720) > random_height:
-            vaild = False
-        else:
-            vaild = True
-    return random_height
-
-def get_random_width(width):
-    vaild = False
-    while(vaild == False):
-        random_width = random.random()
-        if (1520-width)/1520 < random_width:
-            vaild = False
-        elif (width/1520) > random_width:
-            vaild = False
-        else:
-            vaild = True
-    return random_width
-
-def get_random_centre(height,width):
-    return get_random_height(height),get_random_width(width)
-
-def get_card_size():
-    return random.uniform(0.8,1.2)
-
+# Get label number based on suit + value
 def label_number(card):
     cards = {
         "B1" : 0,
@@ -69,42 +40,17 @@ def label_number(card):
     }
     return cards.get(card)
 
-def generate_images(image_count, image_rotation):
-    for x in range(image_count):
-        for y in ["B","C","D"]:
-            for z in range(1,10):
-                background = cv2.imread("./MahjongTiles/background.jpg")
-                background = cv2.cvtColor(background, cv2.COLOR_BGR2RGB)
-                card = cv2.imread("./MahjongTiles/" + y + str(z) + ".jpg")
-                card = cv2.cvtColor(card, cv2.COLOR_BGR2RGB)
-                
-                if image_rotation == 90:
-                    card = cv2.rotate(card, cv2.ROTATE_90_CLOCKWISE)
-                elif image_rotation == 180:
-                    card = cv2.rotate(card, cv2.ROTATE_180)
-                elif image_rotation == 270:
-                    card = cv2.rotate(card, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                    
-                height = card.shape[0]
-                width = card.shape[1]
-                size = get_card_size()
-                card = cv2.resize(card,(int(width*size),int(height*size)))
-                height = card.shape[0]
-                width = card.shape[1]
-                
-                centre_height,centre_width = get_random_centre(height,width)
-                top_left_height = int((centre_height*720)-(height/2))
-                top_left_width = int((centre_width*1520)-(width/2))
-                background[top_left_height:top_left_height+height, top_left_width:top_left_width+width] = card
-                
-                cv2.imwrite("./test-generator/images/image_" + str(x) + "_" + y + str(z) + "_rotated_" + str(image_rotation) + ".jpg", cv2.cvtColor(background, cv2.COLOR_RGB2BGR))
-                files = open("./test-generator/labels/image_" + str(x) + "_" + y + str(z) + "_rotated_" + str(image_rotation) + ".txt", 'w')
-                yolo = str(label_number(y+str(z)))+" "+str(centre_width)+" "+str(centre_height)+" "+str(width/1520)+" "+str(height/720)
-                files.write(yolo)
-                
-                print("Generated image_" + str(x) + "_" + y + str(z) + "_rotated_" + str(image_rotation) + ".jpg")
-                
-                
+# Return the first available tile that has enough to turn into a peng       
+def get_peng_tile(tile_counts):
+    suits=["B", "C", "D"]
+    for suit in suits:
+        for i in range(1,9):            
+            if (tile_counts[label_number(suit + str(i))]) <= 1:
+                tile_counts[label_number(suit + str(i))] += 3
+                return suit, i
+    return "NO_PENG", 0
+
+# Return a random tile that hasn't already been used more than 4 times
 def get_random_tile(tile_counts):
     suits = ["B", "C", "D"]
     suit = random.choice(suits)
@@ -116,6 +62,151 @@ def get_random_tile(tile_counts):
     tile_counts[label_number(suit + str(tile_value))] += 1
     return suit, tile_value
 
+# Generate a row of 3 tiles given coordinates and a side of the player table
+def generate_peng_row(background, tile_counts, label, STARTING_X, STARTING_Y, DIRECTION):
+    suit, tile_value = get_peng_tile(tile_counts)
+    if suit == "NO_PENG":
+        return background # Refuse to generate a row if it can't be legally constructed
+    
+    for i in range(3):
+        card = cv2.imread("./Mahjong-Tiles-Small/" + suit + str(tile_value) + ".jpg")
+        card = cv2.cvtColor(card, cv2.COLOR_BGR2RGB)
+        
+        height = card.shape[0]
+        width = card.shape[1]
+                
+        if DIRECTION == "EAST":
+            card = cv2.resize(card,(int(width),int(height)))
+            card = cv2.rotate(card, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+        elif DIRECTION == "NORTH":
+            card = cv2.resize(card,(int(width),int(height)))
+            card = cv2.rotate(card, cv2.ROTATE_180)
+        elif DIRECTION == "WEST":
+            card = cv2.resize(card,(int(width),int(height)))
+            card = cv2.rotate(card, cv2.ROTATE_90_CLOCKWISE)
+
+        else:
+            card = cv2.resize(card,(int(width),int(height)))
+
+        height = card.shape[0]
+        width = card.shape[1]
+        
+        if DIRECTION == "SOUTH" or DIRECTION == "NORTH":
+            centre_height = STARTING_Y / 720
+            centre_width = (STARTING_X + (i * width)) / 1520
+        else:
+            centre_height = (STARTING_Y + (i * height)) / 720
+            centre_width = STARTING_X  / 1520
+        
+        top_left_height = int((centre_height*720)-(height/2))
+        top_left_width = int((centre_width*1520)-(width/2))
+        background[top_left_height:top_left_height+height, top_left_width:top_left_width+width] = card
+
+        yolo_bbox = str(label_number(suit+str(tile_value)))+" "+str(centre_width)+" "+str(centre_height)+" "+str(width/1520)+" "+str(height/720) + "\n"
+        label.write(yolo_bbox)
+        
+    return background
+
+# Generate a row of 6 tiles given coordinates and a side of the player table
+def generate_discard_row(background, tile_counts, label, STARTING_X, STARTING_Y, DIRECTION):
+    for i in range(6):
+        suit, tile_value = get_random_tile(tile_counts)
+        card = cv2.imread("./Mahjong-Tiles-Small/" + suit + str(tile_value) + ".jpg")
+        card = cv2.cvtColor(card, cv2.COLOR_BGR2RGB)
+        
+        height = card.shape[0]
+        width = card.shape[1]
+                
+        if DIRECTION == "EAST":
+            card = cv2.resize(card,(int(width),int(height)))
+            card = cv2.rotate(card, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+        elif DIRECTION == "NORTH":
+            card = cv2.resize(card,(int(width),int(height)))
+            card = cv2.rotate(card, cv2.ROTATE_180)
+        elif DIRECTION == "WEST":
+            card = cv2.resize(card,(int(width),int(height)))
+            card = cv2.rotate(card, cv2.ROTATE_90_CLOCKWISE)
+
+        else:
+            card = cv2.resize(card,(int(width),int(height)))
+
+        height = card.shape[0]
+        width = card.shape[1]
+        
+        if DIRECTION == "SOUTH" or DIRECTION == "NORTH":
+            centre_height = STARTING_Y / 720
+            centre_width = (STARTING_X + (i * width)) / 1520
+        else:
+            centre_height = (STARTING_Y + (i * height)) / 720
+            centre_width = STARTING_X  / 1520
+        
+        top_left_height = int((centre_height*720)-(height/2))
+        top_left_width = int((centre_width*1520)-(width/2))
+        background[top_left_height:top_left_height+height, top_left_width:top_left_width+width] = card
+
+        yolo_bbox = str(label_number(suit+str(tile_value)))+" "+str(centre_width)+" "+str(centre_height)+" "+str(width/1520)+" "+str(height/720) + "\n"
+        label.write(yolo_bbox)
+        
+    return background
+
+# Fill in dedicated coordinates to generate peng tiles
+def generate_peng_tiles(background, tile_counts, label):
+    SOUTH_X = 1334
+    SOUTH_Y = 650
+
+    NORTH_X = 366
+    NORTH_Y = 45
+    
+    EAST_X = 1269
+    EAST_Y = 54
+    
+    WEST_X = 194
+    WEST_Y = 280
+    
+    # Prioritize generating min one row of peng tiles
+    background = generate_peng_row(background, tile_counts, label, SOUTH_X, SOUTH_Y, "SOUTH")
+    background = generate_peng_row(background, tile_counts, label, NORTH_X, NORTH_Y, "NORTH")
+    background = generate_peng_row(background, tile_counts, label, EAST_X, EAST_Y, "EAST")
+    background = generate_peng_row(background, tile_counts, label, WEST_X, WEST_Y, "WEST")
+    
+    background = generate_peng_row(background, tile_counts, label, NORTH_X + 150, NORTH_Y, "NORTH")
+    background = generate_peng_row(background, tile_counts, label, EAST_X, EAST_Y + 150, "EAST")
+    background = generate_peng_row(background, tile_counts, label, WEST_X, WEST_Y + 150, "WEST")
+    
+    return background
+
+# Fill in dedicated coordinates to generate discarded tiles for all players
+def generate_discarded_tiles(background, tile_counts, label):
+    SOUTH_X = 643
+    SOUTH_Y = 450
+
+    NORTH_X = 653
+    NORTH_Y = 190
+    
+    EAST_X = 930
+    EAST_Y = 220
+    
+    WEST_X = 580
+    WEST_Y = 220
+    background = generate_discard_row(background, tile_counts, label, SOUTH_X, SOUTH_Y, "SOUTH")
+    background = generate_discard_row(background, tile_counts, label, SOUTH_X, SOUTH_Y+48, "SOUTH")
+
+    background = generate_discard_row(background, tile_counts, label, NORTH_X, NORTH_Y, "NORTH")
+    background = generate_discard_row(background, tile_counts, label, NORTH_X, NORTH_Y-48, "NORTH")
+
+    background = generate_discard_row(background, tile_counts, label, EAST_X, EAST_Y, "EAST")
+    background = generate_discard_row(background, tile_counts, label, EAST_X+48, EAST_Y, "EAST")
+    
+    background = generate_discard_row(background, tile_counts, label, WEST_X, WEST_Y, "WEST")
+    background = generate_discard_row(background, tile_counts, label, WEST_X-48, WEST_Y, "WEST")
+    
+
+        
+    return background
+
+# Generate 12 tiles forming the player's hand
 def generate_player_hand(background, tile_counts, label):
     STARTING_X = 290
     STARTING_Y = 640
@@ -144,24 +235,26 @@ def generate_player_hand(background, tile_counts, label):
         
     return background
 
-def experimental_generate_images(image_count):
+# Main script to generate images
+def generate_images(image_num):
     tile_counts = np.zeros(27)
-    for x in range(image_count):
-        background = cv2.imread("./MahjongTiles/background.jpg")
-        background = cv2.cvtColor(background, cv2.COLOR_BGR2RGB)
-        
-        label = open("./image_" + str(x) + ".txt", 'w')
-        
-        background = generate_player_hand(background, tile_counts, label)
-        
-        cv2.imwrite("./image_" + str(x) + ".jpg" , cv2.cvtColor(background, cv2.COLOR_RGB2BGR))
-        
-        print("Generated image_" + str(x) + ".jpg")
+    background = cv2.imread("./MahjongTiles/background.jpg")
+    background = cv2.cvtColor(background, cv2.COLOR_BGR2RGB)
+    
+    label = open("./Generated_Data/labels/generated_" + str(image_num) + ".txt", 'w')
+    # label = open("./Data/labels/train/generated_" + str(image_num) + ".txt", 'w')
+    
+    background = generate_player_hand(background, tile_counts, label)
+    background = generate_discarded_tiles(background, tile_counts, label)
+    background = generate_peng_tiles(background, tile_counts, label)
+    
+    cv2.imwrite("./Generated_Data/images/generated_" + str(image_num) + ".jpg" , cv2.cvtColor(background, cv2.COLOR_RGB2BGR))
+    # cv2.imwrite("./Data/images/train/generated_" + str(image_num) + ".jpg" , cv2.cvtColor(background, cv2.COLOR_RGB2BGR))
+    
+    print("Created " + str(image_num) + ".jpg")
 
 if __name__ == "__main__":
     print("GENERATING DATASET")
-    # generate_images(100, 0)
-    # generate_images(100, 90)
-    # generate_images(100, 180)
-    # generate_images(100, 270)
-    experimental_generate_images(1)
+    image_count = 1
+    for i in range(image_count):
+        generate_images(i)
