@@ -1,5 +1,7 @@
 ultralytics
 torch
+onnx
+onnxruntime
 ipython
 cv2
 numpy
